@@ -1,0 +1,16 @@
+{
+  "name": "brume-core",
+  "version": "1.0.0",
+  "description": "Brume core",
+  "main": "Brume.mjs",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+		"postinstall" : "rm simplepeer.min.js; ln node_modules/simple-peer/simplepeer.min.js simplepeer.min.js"
+  },
+  "author": "Bob Lund",
+  "license": "CC-BY-NC-4.0",
+  "dependencies": {
+    "process": "^0.11.10",
+    "simple-peer": "^9.11.1"
+  }
+}
