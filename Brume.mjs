@@ -20,7 +20,7 @@ if( typeof window !== 'undefined' ){
 	SimplePeer = window.SimplePeer;
 } else {
 	// nodejs
-	( { refreshTokenAuth } = await import( '../auth/cognitoAuth.mjs' ) );
+	( { refreshTokenAuth } = await import( 'brume-auth' ) );
 	SimplePeer = ( await import( 'simple-peer' ) ).default;
 	//global.WebSocket = ( await import( 'ws' ) ).default;
 }
