@@ -93,7 +93,9 @@ const	CLIENTID = '6dspdoqn9q00f0v42c12qvkh5l',
 		410: 'Payment required',
 		500: 'Server error',
 		501: 'Server error',
+		EBADCONFIG: 'Invalid service config',
 		ECONNREFUSED: '',
+		ENOSRV: 'No server connection',
 		ENOTFOUND: '',
 		ENODEST: '',
 		EOFFERTIMEOUT: '',
@@ -265,7 +267,14 @@ class Brume extends EventEmitter {
 	set onconnection( func ){ this.#offerProcessor = func; }
 
 	async connect( to ){
-		if( this.#peers[ to ] !== undefined ) throw( `Peer connection to ${ to } exists` );
+		if( this.#ws === undefined ){
+			return Promise.reject( { code: 'ENOSRV', message: errorCodeMessages[ 'ENOSRV' ] } );
+		}
+
+		if( this.#peers[ to ] === undefined ){
+			return Promise.resolve( this.#peers[ to ] );
+		}
+
 		const peer = new SimplePeer( { initiator: true, trickle: true, ...( typeof this.#wrtc != 'undefined' ? { wrtc: this.#wrtc } : {} ) } );
 		peer.peerUsername = to;
 		this.#peers[ to ] = peer;
@@ -303,14 +312,17 @@ class Brume extends EventEmitter {
 		}
 	};
 
-	start( config = undefined ){ // browser Brume doesn't have config until start
-		if( config ){
-			this.#config = config;
-			this.#user = jwt.decode( config.token )['custom:brume_name'];
+	start( config ){
+		if( config?.token === undefined || config?.url === undefined ){
+			return Promise.reject( { code: 'EBADCONFIG', message: errorCodeMessages[ 'EBADCONFIG' ] } );
 		}
+
+		this.#config = config;
+		this.#user = jwt.decode( config?.token )['custom:brume_name'];
+
 		return new Promise( async ( res, rej ) => {
 			try {
-				await this.#openWs( { token: this.#config.token, url: this.#config.url } );
+				await this.#openWs( { token: config?.token, url: config?.url } );
 				res();
 			} catch( e ) {
 				if( typeof window === 'undefined' && e?.code && e.code == '401' ){
