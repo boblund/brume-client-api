@@ -271,7 +271,7 @@ class Brume extends EventEmitter {
 			return Promise.reject( { code: 'ENOSRV', message: errorCodeMessages[ 'ENOSRV' ] } );
 		}
 
-		if( this.#peers[ to ] === undefined ){
+		if( this.#peers[ to ] !== undefined ){
 			return Promise.resolve( this.#peers[ to ] );
 		}
 
