@@ -182,7 +182,27 @@ class Brume extends EventEmitter {
 	}
 
 	async #openWs( { token, url } ){
-		this.#ws = await wsConnect( { token, url } );
+		//this.#ws = await wsConnect( { token, url } );
+		this.#ws = await new Promise( ( res, rej ) => {
+			let ws = typeof window == undefined
+				? new WebSocket( url, { headers: { token }, rejectUnauthorized: false } )
+				: new WebSocket( `${ url }?token=${ token }` );
+
+			//ws.on('pong', ()=>{});
+			ws.onopen = () => { res( ws ); };
+
+			ws.onerror = err => {
+				// make codes recognize: ECONNREFUSED, ENOTFOUND in err.message
+				const code = err?.message
+					? err?.message.match( /: (\d*)/ )
+						? err.message.match( /: (\d*)/ )[1]
+						: undefined
+					: undefined;
+				rej( code && errorCodeMessages[code] ? { message: `${ errorCodeMessages[code] } ${ code }`, code } : err );
+			};
+
+		} );
+
 		const pingInterval = setPingInterval( this.#ws );
 		this.#ws.addEventListener( 'message',  msg => {
 			let { from, ...data } = JSON.parse( msg.data );
@@ -264,15 +284,20 @@ class Brume extends EventEmitter {
 	};
 
 	get thisUser() { return this.#user; }
+	get serverConnected() { return this.#ws !== undefined; }
 	set onconnection( func ){ this.#offerProcessor = func; }
 
 	async connect( to ){
-		if( this.#ws === undefined ){
-			return Promise.reject( { code: 'ENOSRV', message: errorCodeMessages[ 'ENOSRV' ] } );
-		}
-
 		if( this.#peers[ to ] !== undefined ){
 			return Promise.resolve( this.#peers[ to ] );
+		}
+
+		if( this.#ws === undefined ){
+			try{
+				await this.start();
+			} catch( e ){
+				return Promise.reject( e );
+			}
 		}
 
 		const peer = new SimplePeer( { initiator: true, trickle: true, ...( typeof this.#wrtc != 'undefined' ? { wrtc: this.#wrtc } : {} ) } );
@@ -312,17 +337,17 @@ class Brume extends EventEmitter {
 		}
 	};
 
-	start( config ){
-		if( config?.token === undefined || config?.url === undefined ){
+	start( config = undefined ){
+		this.#config = config === undefined ? this.#config : config;
+		if( this.#config?.token === undefined || this.#config?.url === undefined ){
 			return Promise.reject( { code: 'EBADCONFIG', message: errorCodeMessages[ 'EBADCONFIG' ] } );
 		}
 
-		this.#config = config;
-		this.#user = jwt.decode( config?.token )['custom:brume_name'];
+		this.#user = jwt.decode( this.#config?.token )['custom:brume_name'];
 
 		return new Promise( async ( res, rej ) => {
 			try {
-				await this.#openWs( { token: config?.token, url: config?.url } );
+				await this.#openWs( { token: this.#config.token, url: this.#config.url } );
 				res();
 			} catch( e ) {
 				if( typeof window === 'undefined' && e?.code && e.code == '401' ){
