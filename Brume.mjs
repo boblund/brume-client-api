@@ -108,7 +108,7 @@ function wsConnect( { token, url } ) {
 			? new WebSocket( url, { headers: { token }, rejectUnauthorized: false } )
 			: new WebSocket( `${ url }?token=${ token }` );
 
-		//ws.on('pong', ()=>{});
+		ws.on( 'pong', ()=>{ Brume.log.debug( `pong` ); } );
 		ws.onopen = () => { res( ws ); };
 
 		ws.onerror = err => {
@@ -271,13 +271,7 @@ class Brume extends EventEmitter {
 		} );
 
 		this.#ws.addEventListener( 'close', ( event ) => {
-			//if( typeof window === 'undefined' ){
-			if( this.listeners( 'serverclose' ).length == 0 ) {
-				setTimeout( async ()=>{ await this.start(); }, 10 * 1000 );  //give server time to delete closed session
-			} else {
-				this.emit( 'serverclose' );
-			}
-
+			this.emit( 'serverclose', { code: event.code, message: event.reason } );
 			clearInterval( pingInterval );
 			this.stop();
 		} );
