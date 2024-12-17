@@ -1,3 +1,4 @@
+import path from 'path';
 export { log };
 
 const levels = [ 'DEBUG', 'INFO', 'WARN', 'ERROR' ];
@@ -7,7 +8,9 @@ let level = typeof window === 'undefined'
 
 const _log = a => ( ...b ) => {
 	if( levels.indexOf( a ) > -1 && levels.indexOf( a ) >= levels.indexOf( level ) ) {
-		console.log( `${ new Date().toLocaleString( 'sv-SE' ) } [ ${ a } ]`, ...b );
+		//const location = new Error().stack.split('\n')[3].match(/(at \S*).*\/(\S*)\)/)
+		const lineNumber = path.basename( new Error().stack.split('\n')[3].slice(0,-1) );
+		console.log( `${ new Date().toLocaleString( 'sv-SE' ) } [ ${ a } ]`, lineNumber, ...b );
 	}
 };
 

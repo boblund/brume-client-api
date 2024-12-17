@@ -97,7 +97,7 @@ const	CLIENTID = '6dspdoqn9q00f0v42c12qvkh5l',
 		ECONNREFUSED: '',
 		ENOSRV: 'No server connection',
 		ENOTFOUND: '',
-		ENODEST: '',
+		ENODEST: 'destination not connected',
 		EOFFERTIMEOUT: '',
 		NotAuthorizedException: 'Invalid Refresh Token'
 	};
@@ -168,9 +168,10 @@ class Brume extends EventEmitter {
 	#wrtc = undefined;
 	#config = undefined;
 	#peers = {};
+	#trickle;
 	#offerProcessor = () => {};
 
-	constructor( { wrtc, WebSocket } = { wrtc: undefined, WebSocket: undefined } ){
+	constructor( { wrtc, WebSocket, trickle } = { wrtc: undefined, WebSocket: undefined, trickle: true } ){
 		super();
 		if( typeof window === 'undefined' ){
 			if( typeof wrtc === 'undefined' || typeof WebSocket === 'undefined' ){
@@ -178,6 +179,7 @@ class Brume extends EventEmitter {
 			}
 			this.#wrtc = wrtc;
 			global.WebSocket = WebSocket;
+			this.#trickle = trickle;
 		}
 	}
 
@@ -215,7 +217,7 @@ class Brume extends EventEmitter {
 						// offer because of peer renegotiate
 						this.#peers[ from ].signal( data );
 					} else {
-						const peer = new SimplePeer( { trickle: true, ...( typeof this.#wrtc != 'undefined' ? { wrtc: this.#wrtc } : {} ) } );
+						const peer = new SimplePeer( { trickle: this.#trickle, ...( typeof this.#wrtc != 'undefined' ? { wrtc: this.#wrtc } : {} ) } );
 						peer.peerUsername = from;
 						this.#peers[ from ] = peer;
 						peer.on( 'data', ondataHandler );
@@ -256,13 +258,11 @@ class Brume extends EventEmitter {
 					break;
 
 				case 'transceiverRequest':
-					log.debug( `Brume transceiverRequest: ${ JSON.stringify( data ) }` );
 					this.#peers[ from ].addTransceiver( data.transceiverRequest.kind, { send: true, receive: true } );
 					break;
 
 				case 'peerError':
-					log.debug( `Brume peerError: ${ JSON.stringify( data ) }` );
-					this.#peers[ data.peerUsername ].emit( 'peerError', data );
+					if( this.#peers[ data.peerUsername ] instanceof SimplePeer ) this.#peers[ data.peerUsername ].emit( 'peerError', data );
 					break;
 
 				default:
@@ -294,7 +294,7 @@ class Brume extends EventEmitter {
 			}
 		}
 
-		const peer = new SimplePeer( { initiator: true, trickle: true, ...( typeof this.#wrtc != 'undefined' ? { wrtc: this.#wrtc } : {} ) } );
+		const peer = new SimplePeer( { initiator: true, trickle: this.#trickle, ...( typeof this.#wrtc != 'undefined' ? { wrtc: this.#wrtc } : {} ) } );
 		peer.peerUsername = to;
 		this.#peers[ to ] = peer;
 		peer.on( 'data', ondataHandler );
@@ -322,8 +322,9 @@ class Brume extends EventEmitter {
 				peer.on( 'error', ( e ) => { rej( e ); } );
 				peer.on( 'peerError', ( { code, peerUsername: to } ) => {
 					clearTimeout( peer.offerTimer );
+					if( this.#peers[ to ] !== undefined ) this.#peers[ to ].destroy();
 					delete this.#peers[ to ];
-					rej( { code: code, peerUsername: to, type: 'peerError', message: `${ to } connection request timeout` } );
+					rej( { code: code, peerUsername: to, type: 'peerError', message: `${ errorCodeMessages[ code ] }` } );
 				} );
 			} );
 		} catch( e ) {
