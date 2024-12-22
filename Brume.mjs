@@ -219,6 +219,7 @@ class Brume extends EventEmitter {
 					} else {
 						const peer = new SimplePeer( { trickle: this.#trickle, ...( typeof this.#wrtc != 'undefined' ? { wrtc: this.#wrtc } : {} ) } );
 						peer.peerUsername = from;
+						peer.newPeer = true;
 						this.#peers[ from ] = peer;
 						peer.on( 'data', ondataHandler );
 						peer.on( 'close', () => {
@@ -296,6 +297,7 @@ class Brume extends EventEmitter {
 
 		const peer = new SimplePeer( { initiator: true, trickle: this.#trickle, ...( typeof this.#wrtc != 'undefined' ? { wrtc: this.#wrtc } : {} ) } );
 		peer.peerUsername = to;
+		peer.newPeer = true;
 		this.#peers[ to ] = peer;
 		peer.on( 'data', ondataHandler );
 		peer.on( 'close', () => {
@@ -314,6 +316,7 @@ class Brume extends EventEmitter {
 				peer.on( 'connect', () => {
 					log.debug( `peer.connect: ${ to }` );
 					peer.removeAllListeners( 'signal' );
+					peer.removeAllListeners( 'peerError' );
 					peer.on( 'signal', ( data ) => {
 						peer.send( encodeMsg( { type: 'signal', data } ) );
 					} );
