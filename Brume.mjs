@@ -102,34 +102,6 @@ const	CLIENTID = '6dspdoqn9q00f0v42c12qvkh5l',
 		NotAuthorizedException: 'Invalid Refresh Token'
 	};
 
-function wsConnect( { token, url } ) {
-	return new Promise( ( res, rej ) => {
-		let ws = typeof window == undefined
-			? new WebSocket( url, { headers: { token }, rejectUnauthorized: false } )
-			: new WebSocket( `${ url }?token=${ token }` );
-
-		ws.on( 'pong', ()=>{ Brume.log.debug( `pong` ); } );
-		ws.onopen = () => { res( ws ); };
-
-		ws.onerror = err => {
-			// make codes recognize: ECONNREFUSED, ENOTFOUND in err.message
-			const code = err?.message
-				? err?.message.match( /: (\d*)/ )
-					? err.message.match( /: (\d*)/ )[1]
-					: undefined
-				: undefined;
-			rej( code && errorCodeMessages[code] ? { message: `${ errorCodeMessages[code] } ${ code }`, code } : err );
-		};
-
-	} );
-}
-
-function setPingInterval( ws ){
-	return typeof ws?.ping === 'function'
-		? setInterval( function(){ ws.ping( ()=>{} ); }, 9.8 * 60 * 1000 )
-		: null;
-}
-
 function ondataHandler ( _data ) {
 	if( checkMsgType( _data, 'signal' ) ){
 		const data = decodeMsg( _data );
@@ -205,7 +177,7 @@ class Brume extends EventEmitter {
 
 		} );
 
-		const pingInterval = setPingInterval( this.#ws );
+		const pingInterval = setInterval( () => { this.#ws.ping( ()=>{} ); }, 9.8 * 60 * 1000 );
 		this.#ws.addEventListener( 'message',  msg => {
 			let { from, ...data } = JSON.parse( msg.data );
 			data = data?.data ? data.data  : data ;
@@ -219,6 +191,7 @@ class Brume extends EventEmitter {
 					} else {
 						const peer = new SimplePeer( { trickle: this.#trickle, ...( typeof this.#wrtc != 'undefined' ? { wrtc: this.#wrtc } : {} ) } );
 						peer.peerUsername = from;
+						peer.myUsername = this.thisUser;
 						peer.newPeer = true;
 						this.#peers[ from ] = peer;
 						peer.on( 'data', ondataHandler );
@@ -297,11 +270,12 @@ class Brume extends EventEmitter {
 
 		const peer = new SimplePeer( { initiator: true, trickle: this.#trickle, ...( typeof this.#wrtc != 'undefined' ? { wrtc: this.#wrtc } : {} ) } );
 		peer.peerUsername = to;
+		peer.myUsername = this.thisUser;
 		peer.newPeer = true;
 		this.#peers[ to ] = peer;
 		peer.on( 'data', ondataHandler );
 		peer.on( 'close', () => {
-			delete this.#peers[ to ];
+			delete this.#peers?.[ to ];
 		} );
 		try{
 			return await new Promise( ( res, rej ) => {
