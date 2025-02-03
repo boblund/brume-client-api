@@ -9,7 +9,6 @@ let /*wrtc,*/ SimplePeer;
 
 /// #if WEBPACK
 
-// webview
 // #code SimplePeer = ( await import( './simplepeer.min.js' ) ).default;
 
 /// #else
