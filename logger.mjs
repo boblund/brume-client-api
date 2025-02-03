@@ -1,5 +1,6 @@
-import path from 'path';
 export { log };
+
+function basename( path ){ return path.split('/').reverse()[0]; };
 
 const levels = [ 'DEBUG', 'INFO', 'WARN', 'ERROR' ];
 let level = typeof window === 'undefined'
@@ -9,7 +10,7 @@ let level = typeof window === 'undefined'
 const _log = a => ( ...b ) => {
 	if( levels.indexOf( a ) > -1 && levels.indexOf( a ) >= levels.indexOf( level ) ) {
 		//const location = new Error().stack.split('\n')[3].match(/(at \S*).*\/(\S*)\)/)
-		const lineNumber = level === 'DEBUG' ? path.basename( new Error().stack.split('\n')[3].slice(0,-1) )
+		const lineNumber = level === 'DEBUG' ? basename( new Error().stack.split('\n')[3].slice(0,-1) )
 			.replace(/:\d+$/,'') : '';
 		console.log( `${ new Date().toLocaleString( 'sv-SE' ) } [ ${ a } ]`, lineNumber, ...b );
 	}
