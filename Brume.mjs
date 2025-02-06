@@ -9,13 +9,13 @@ let /*wrtc,*/ SimplePeer;
 
 /// #if WEBPACK
 
-// #code SimplePeer = ( await import( './simplepeer.min.js' ) ).default;
+// #code SimplePeer = ( await import( 'simple-peer' ) ).default;
 
 /// #else
 
 if( typeof window !== 'undefined' ){
 	// browser
-	await import( './simplepeer.min.js' );
+	await import( '../simple-peer/simplepeer.min.js' );
 	SimplePeer = window.SimplePeer;
 } else {
 	// nodejs
