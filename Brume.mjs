@@ -15,7 +15,7 @@ let /*wrtc,*/ SimplePeer;
 
 if( typeof window !== 'undefined' ){
 	// browser
-	await import( '../simple-peer/simplepeer.min.js' );
+	await import( './node_modules/simple-peer/simplepeer.min.js' );
 	SimplePeer = window.SimplePeer;
 } else {
 	// nodejs
