@@ -1,7 +1,7 @@
 {
   "name": "brume-client-api",
   "version": "1.0.0",
-	"config": {
+  "config": {
     "install-strategy": "nested"
   },
   "description": "Brume client api",
