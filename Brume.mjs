@@ -176,7 +176,10 @@ class Brume extends EventEmitter {
 
 		} );
 
-		const pingInterval = setInterval( () => { this.#ws.ping( ()=>{} ); }, 9.8 * 60 * 1000 );
+		const pingInterval = this.#ws.ping instanceof Function
+			? setInterval( () => { this.#ws.ping( ()=>{} ); }, 9.8 * 60 * 1000 )
+			: undefined;
+
 		this.#ws.addEventListener( 'message',  msg => {
 			let { from, ...data } = JSON.parse( msg.data );
 			data = data?.data ? data.data  : data ;
