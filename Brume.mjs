@@ -303,7 +303,7 @@ class Brume extends EventEmitter {
 					clearTimeout( peer.offerTimer );
 					if( this.#peers[ to ] !== undefined ) this.#peers[ to ].destroy();
 					delete this.#peers[ to ];
-					rej( { code: code, peerUsername: to, type: 'peerError', message: `${ errorCodeMessages[ code ] }` } );
+					rej( { message: `${ errorCodeMessages[ code ] } to: ${ to }`, code: code } );
 				} );
 			} );
 		} catch( e ) {
