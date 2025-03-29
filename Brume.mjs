@@ -82,7 +82,7 @@ SimplePeer.prototype.emit = function emit( type ) {
 
 const	CLIENTID = '6dspdoqn9q00f0v42c12qvkh5l',
 	errorCodeMessages = {
-		400: 'Missing token',
+		400: 'Bad signalling message',
 		401: 'Unauthorized',
 		402: 'Payment required',
 		403: 'Invalid server url',
@@ -92,13 +92,13 @@ const	CLIENTID = '6dspdoqn9q00f0v42c12qvkh5l',
 		410: 'Payment required',
 		500: 'Server error',
 		501: 'Server error',
-		EBADCONFIG: 'Invalid service config',
+		EBADCONFIG: 'Invalid token',
 		ECONNREFUSED: '',
 		ENOSRV: 'No server connection',
 		ENOTFOUND: '',
-		ENODEST: 'destination not connected',
+		ENODEST: 'Destination not connected',
 		EOFFERTIMEOUT: '',
-		NotAuthorizedException: 'Invalid Refresh Token'
+		NotAuthorizedException: 'Invalid refresh token'
 	};
 
 function ondataHandler ( _data ) {
@@ -313,11 +313,11 @@ class Brume extends EventEmitter {
 
 	start( config = undefined ){
 		this.#config = config === undefined ? this.#config : config;
-		if( this.#config?.token === undefined || this.#config?.url === undefined ){
+		try{
+			this.#user = jwt.decode( this.#config?.token )['custom:brume_name'];
+		} catch( e ){
 			return Promise.reject( { code: 'EBADCONFIG', message: errorCodeMessages[ 'EBADCONFIG' ] } );
 		}
-
-		this.#user = jwt.decode( this.#config?.token )['custom:brume_name'];
 
 		return new Promise( async ( res, rej ) => {
 			try {
