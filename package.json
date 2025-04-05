@@ -13,7 +13,7 @@
   "author": "Bob Lund",
   "license": "CC-BY-NC-4.0",
   "dependencies": {
-    "brume-auth": "file:../brume-auth",
+    "brume-auth": "github:boblund/brume-auth#newauth",
     "process": "^0.11.10",
     "simple-peer": "^9.11.1"
   }
