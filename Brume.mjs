@@ -326,7 +326,7 @@ class Brume extends EventEmitter {
 			} catch( e ) {
 				if( typeof window === 'undefined' && e?.code && e.code == '401' ){
 					try{
-						let { IdToken } = await refreshTokenAuth( CLIENTID, this.#config.RefreshToken );
+						let { IdToken } = await refreshTokenAuth( this.#config.RefreshToken, this.#user );
 						this.#config.token = IdToken;
 						this.emit( 'reauthorize', this.#config );
 						await this.#openWs( { token: this.#config.token, url: this.#config.url } );
