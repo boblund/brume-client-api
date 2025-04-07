@@ -7,12 +7,13 @@
   "description": "Brume client api",
   "main": "Brume.mjs",
   "scripts": {
-		"postinstall": "cp -f node_modules/simple-peer/simplepeer.min.js .",
+    "postinstall": "cp -f node_modules/simple-peer/simplepeer.min.js .",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Bob Lund",
   "license": "CC-BY-NC-4.0",
   "dependencies": {
+    "brume-auth": "github:boblund/brume-auth#newauth",
     "process": "^0.11.10",
     "simple-peer": "^9.11.1"
   }
