@@ -4,8 +4,7 @@ import { encodeMsg, decodeMsg, checkMsgType } from './peerMsgEncDec.mjs';
 import { log } from './logger.mjs';
 import { EventEmitter } from './events.mjs';
 
-let refreshTokenAuth = () => {}; // webpack needs this but only called in nodejs
-let /*wrtc,*/ SimplePeer;
+let  SimplePeer;
 
 /// #if WEBPACK
 
@@ -19,9 +18,7 @@ if( typeof window !== 'undefined' ){
 	SimplePeer = window.SimplePeer;
 } else {
 	// nodejs
-	( { refreshTokenAuth } = await import( 'brume-auth' ) );
 	SimplePeer = ( await import( 'simple-peer' ) ).default;
-	//global.WebSocket = ( await import( 'ws' ) ).default;
 }
 
 /// #endif
@@ -96,7 +93,7 @@ const	CLIENTID = '6dspdoqn9q00f0v42c12qvkh5l',
 		ECONNREFUSED: '',
 		ENOSRV: 'No server connection',
 		ENOTFOUND: '',
-		ENODEST: 'Destination not connected',
+		ENODEST: 'not connected',
 		EOFFERTIMEOUT: '',
 		NotAuthorizedException: 'Invalid refresh token'
 	};
@@ -303,7 +300,7 @@ class Brume extends EventEmitter {
 					clearTimeout( peer.offerTimer );
 					if( this.#peers[ to ] !== undefined ) this.#peers[ to ].destroy();
 					delete this.#peers[ to ];
-					rej( { message: `${ errorCodeMessages[ code ] } to: ${ to }`, code: code } );
+					rej( { message: `peerError: ${ to } ${ errorCodeMessages[ code ] }`, code: code } );
 				} );
 			} );
 		} catch( e ) {
@@ -324,19 +321,7 @@ class Brume extends EventEmitter {
 				await this.#openWs( { token: this.#config.token, url: this.#config.url } );
 				res();
 			} catch( e ) {
-				if( typeof window === 'undefined' && e?.code && e.code == '401' ){
-					try{
-						let { IdToken } = await refreshTokenAuth( this.#config.RefreshToken, this.#user );
-						this.#config.token = IdToken;
-						this.emit( 'reauthorize', this.#config );
-						await this.#openWs( { token: this.#config.token, url: this.#config.url } );
-						res( this );
-					} catch( e ) {
-						rej( e );
-					}
-				} else {
-					rej( e );
-				}
+				rej( e );
 			}
 		} );
 	}
