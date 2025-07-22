@@ -12,7 +12,7 @@ const _log = a => ( ...b ) => {
 		//const location = new Error().stack.split('\n')[3].match(/(at \S*).*\/(\S*)\)/)
 		const lineNumber = level === 'DEBUG' ? basename( new Error().stack.split('\n')[3].slice(0,-1) )
 			.replace(/:\d+$/,'') : '';
-		console.log( `${ new Date().toLocaleString( 'sv-SE' ) } [ ${ a } ]`, lineNumber, ...b );
+		console.log( `${ new Date().toLocaleString( 'sv-SE' ) } [ ${ a } ]`, lineNumber, b.join( ' ' ) );
 	}
 };
 
