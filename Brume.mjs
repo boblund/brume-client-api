@@ -4,21 +4,19 @@ import { encodeMsg, decodeMsg, checkMsgType } from './peerMsgEncDec.mjs';
 import { log } from './logger.mjs';
 import { EventEmitter } from './events.mjs';
 
-let  SimplePeer;
-
 /// #if WEBPACK
 
-// #code SimplePeer = ( await import( 'simple-peer' ) ).default;
+// #code import SimplePeer from 'simple-peer';
 
 /// #else
-
+let SimplePeer;
 if( typeof window !== 'undefined' ){
 	// browser
-	await import( './simplepeer.min.js' );
-	SimplePeer = window.SimplePeer;
+await import( './simplepeer.min.js' );
+SimplePeer = window.SimplePeer;
 } else {
 	// nodejs
-	SimplePeer = ( await import( 'simple-peer' ) ).default;
+SimplePeer = ( await import( 'simple-peer' ) ).default;
 }
 
 /// #endif
@@ -197,9 +195,9 @@ class Brume extends EventEmitter {
 						peer.on( 'close', () => {
 							delete this.#peers[ from ];
 						} );
-						peer.on( 'error', ( e ) => { if( !e.message.includes( 'Close called' ) ) log.debug( e.message ); } );
+						peer.on( 'error', ( e ) => { if( !e.message.includes( 'Close called' ) ) log.debug( `openWs: ${ e.message }` ); } );
 						peer.on( 'signal', data => {
-							log.debug( `brume signal: ${ data.type }` );
+							log.debug( `brume offer: ${ data.type }` );
 							this.#ws.send( JSON.stringify( { action: 'send', to: from, data } ) );
 						} );
 						this.#offerProcessor( {
@@ -209,6 +207,7 @@ class Brume extends EventEmitter {
 								return new Promise( res => { peer.on( 'connect', function(){
 									peer.removeAllListeners( 'signal' );
 									peer.on( 'signal', ( data ) => {
+										log.debug( `brume accept: ${ data.type }` );
 										peer.send( encodeMsg( { type: 'signal', data } ) );
 									} );
 									log.debug( `peer.onConnect: ${ from }` );
@@ -279,6 +278,7 @@ class Brume extends EventEmitter {
 		try{
 			return await new Promise( ( res, rej ) => {
 				peer.on( 'signal', data => {
+					log.debug( `brume connect: ${ data.type }` );
 					peer.offerTimer = setTimeout( () => {
 						peer.emit( 'peerError', { code: "EOFFERTIMEOUT", peerUsername: to } );
 						delete this.#peers[ to ];
@@ -291,11 +291,12 @@ class Brume extends EventEmitter {
 					peer.removeAllListeners( 'signal' );
 					peer.removeAllListeners( 'peerError' );
 					peer.on( 'signal', ( data ) => {
+						log.debug( `brume connected: ${ data.type }` );
 						peer.send( encodeMsg( { type: 'signal', data } ) );
 					} );
 					res( peer );
 				} );
-				peer.on( 'error', ( e ) => { rej( e ); } );
+				peer.on( 'error', ( e ) => { log.debug( `connect: ${ e.message }` ); rej( e ); } );
 				peer.on( 'peerError', ( { code, peerUsername: to } ) => {
 					clearTimeout( peer.offerTimer );
 					if( this.#peers[ to ] !== undefined ) this.#peers[ to ].destroy();
