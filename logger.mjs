@@ -8,7 +8,7 @@ let level = typeof window === 'undefined'
 	: ( localStorage?.LOG ? localStorage?.LOG : 'INFO' );
 
 const _log = a => ( ...b ) => {
-	if( levels.indexOf( a ) > -1 && levels.indexOf( a ) >= levels.indexOf( level ) ) {
+	if( levels.indexOf( a ) > -1 && levels.indexOf( a ) >=  level ) {
 		//const location = new Error().stack.split('\n')[3].match(/(at \S*).*\/(\S*)\)/)
 		const lineNumber = level === 'DEBUG' ? basename( new Error().stack.split('\n')[3].slice(0,-1) )
 			.replace(/:\d+$/,'') : '';
