@@ -270,7 +270,7 @@ class Brume extends EventEmitter {
 			}
 		}
 
-		const peer = new SimplePeer( { initiator: true, trickle: this.#trickle, ...( typeof this.#wrtc != 'undefined' ? { wrtc: this.#wrtc } : {} ) } );
+		const peer = new SimplePeer( { initiator: true, trickle: this.#trickle, channelName: Math.floor( Math.random() * 100000 ), ...( typeof this.#wrtc != 'undefined' ? { wrtc: this.#wrtc } : {} ) } );
 		peer.peerUsername = to;
 		peer.myUsername = this.thisUser;
 		peer.newPeer = true;
