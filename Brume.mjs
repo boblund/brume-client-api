@@ -137,7 +137,7 @@ class Brume extends EventEmitter {
 	#trickle;
 	#offerProcessor = () => {};
 
-	constructor( { wrtc, WebSocket, trickle } = { wrtc: undefined, WebSocket: undefined, trickle: true } ){
+	constructor( { wrtc, WebSocket, trickle, config } = { wrtc: undefined, WebSocket: undefined, trickle: true, config: undefined } ){
 		super();
 		if( typeof window === 'undefined' ){
 			if( typeof wrtc === 'undefined' || typeof WebSocket === 'undefined' ){
@@ -145,7 +145,11 @@ class Brume extends EventEmitter {
 			}
 			this.#wrtc = wrtc;
 			global.WebSocket = WebSocket;
-			this.#trickle = trickle;
+		}
+		this.#trickle = trickle;
+		if( config ){
+			this.#config = config;
+			this.#user = jwt.decode( this.#config?.token )['custom:brume_name'];
 		}
 	}
 
