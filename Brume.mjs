@@ -1,335 +1,264 @@
-export { Brume };
+export { transferApp, transferAppCleanup };
+import { Brume } from './Brume.mjs';
 
-import { encodeMsg, decodeMsg, checkMsgType } from './peerMsgEncDec.mjs';
-import { log } from './logger.mjs';
-import { EventEmitter } from './events.mjs';
+const transferAppDiv = document.querySelector( 'div.transfer' );
+const transferDoneButton = document.querySelector( 'div.transfer span' );
+const transferAppButton = document.querySelector( 'button.transfer' );
+const offeredFilesDiv = document.querySelector( '#offeredFilesDiv' );
+const offeredFilesList = document.querySelector( '#offeredFilesList' );
+const selectButton = document.querySelector( 'button.select' );
+const sendButton = document.querySelector( 'button.send' );
+const acceptButton = document.querySelector( 'button.accept' );
+const sendFilesDiv = document.querySelector( '#sendFilesDiv' );
+const sendFilesList = document.querySelector( '#sendFilesList' );
+const MAX_SEND_SIZE = 64 * 1024;
 
-/// #if WEBPACK
+let writableStream;
+let writerStartTime;
+let begin = 0;
+let end = MAX_SEND_SIZE;
+let fileData;
+let offeredFilesData = {};
+let readableStream;
+let readerStartTime;
+let startIn = 'documents';
+let sendFilesData = {};
+let thisPeer;
+let value = undefined;
 
-// #code import SimplePeer from 'simple-peer';
-
-/// #else
-let SimplePeer;
-if( typeof window !== 'undefined' ){
-	// browser
-await import( './simplepeer.min.js' );
-SimplePeer = window.SimplePeer;
-} else {
-	// nodejs
-SimplePeer = ( await import( 'simple-peer' ) ).default;
+function fileListEntry( entryName ){
+	const li = document.createElement( 'li' );
+	const cbEl = document.createElement( 'input' );
+	cbEl.setAttribute( 'type', 'checkbox' );
+	cbEl.checked = true;
+	li.appendChild( cbEl );
+	li.appendChild( document.createTextNode( `${ entryName }` ) );
+	const progressEl = document.createElement( 'progress' );
+	progressEl.max = 0;
+	progressEl.value = 0;
+	progressEl.hidden = true;
+	li.appendChild( progressEl );
+	const spanEl = document.createElement( 'span' );
+	spanEl.hidden = true;
+	li.appendChild( spanEl );
+	return( { liEl: li, cbEl, progressEl, spanEl } );
 }
 
-/// #endif
+async function dataHandler( _msg ) {
+	let name, size, status, done;
+	let	msg = Brume.decodeMsg( _msg );
 
-const jwt = { decode( t ){ return JSON.parse( atob( t.split( '.' )[1] ) ); } };
-const OFFERTIMEOUT = 5 * 60 * 1000; // 5 minutes
+	switch( msg.type ) {
+		case 'offeredFiles':
+			for( const file of msg.data ){
+				const { liEl, cbEl, progressEl, spanEl } = fileListEntry( file );
+				offeredFilesList.appendChild( liEl );
+				offeredFilesData[file] = { cbEl, progressEl, spanEl };
+			}
+			sendFilesDiv.hidden = true;
+			transferAppButton.classList.add( 'hidden' );
+			transferAppDiv.classList.remove( 'hidden'  );
+			offeredFilesDiv.classList.remove( 'hidden'  );
+			startIn = 'downloads';
+			break;
 
-function arrayClone( arr, n ) {
-	var copy = new Array( n );
-	for ( var i = 0; i < n; ++i )
-		copy[i] = arr[i];
-	return copy;
+		case 'rejectedFiles':
+			msg.data.forEach( file => { sendFilesData[file].cbEl.checked = false; } );
+			for( const data of Object.values( sendFilesData ) ){
+				if( !data.cbEl.checked ){
+					delete sendFilesData[data.fileHandle.name];
+				}
+			}
+
+			if( Object.keys( sendFilesData ).length > 0 ){
+				fileData = Object.values( sendFilesData )[0];
+				const f = await fileData.fileHandle.getFile();
+				fileData.progressEl.max = f.size;
+				fileData.progressEl.value = 0;
+				fileData.progressEl.hidden = false;
+				readableStream = f.stream().getReader();
+				readerStartTime = undefined;
+				thisPeer.send( Brume.encodeMsg( { type: 'start', data: { name: fileData.fileHandle.name, size: f.size } } ) );
+			}
+			break;
+
+		case 'start':
+			if( writableStream !== null ){
+				await( new Promise( res => { setTimeout( () => { res(); }, 100 ); } ) );
+			}
+			( { name, size } = msg.data );
+			fileData = offeredFilesData[ name ];
+			writableStream = await fileData.fileHandle.createWritable();
+			fileData.progressEl.max = size;
+			fileData.progressEl.hidden = false;
+			thisPeer.send( Brume.encodeMsg( { type: 'ready' } ) );
+			writerStartTime = undefined;
+			break;
+
+		case 'chunk':
+			writerStartTime = writerStartTime == undefined ? Date.now() : writerStartTime;
+			const chunk = new Uint8Array( msg.data );
+			await writableStream.write( chunk );
+			fileData.progressEl.value += chunk.length;
+			thisPeer.send( Brume.encodeMsg( { type: 'ready' } ) );
+			break;
+
+		case 'eof':
+			if( fileData.progressEl.value == fileData.progressEl.max ){
+				status = 'succeeded';
+				fileData.spanEl.innerHTML = ` ${ ( ( fileData.progressEl.value * 8 / 1024 ) / ( ( Date.now() - writerStartTime ) / 1000 ) ).toFixed() }  Kb/s`;
+			} else {
+				status = `Transfer failed: file size: ${ fileData.progressEl.max } received: ${ fileData.progressEl.value }`;
+				fileData.spanEl.innerHTML = status;
+			}
+			fileData.spanEl.hidden = false;
+			thisPeer.send( Brume.encodeMsg( { type: 'result', data: status } ) );
+			await writableStream.close();
+			writableStream = null;
+			break;
+
+		case 'ready':
+			readerStartTime = readerStartTime == undefined ? Date.now() : readerStartTime;
+			if( value == undefined ) {
+				( { done, value } = await readableStream.read() );
+				if( !done ){
+					begin = 0, end = MAX_SEND_SIZE;
+				} else {
+					thisPeer.send( Brume.encodeMsg( { type: 'eof' } ) );
+					break;
+				}
+			}
+
+			const data = Array.from( value.slice ( begin, end ) );
+			thisPeer.send( Brume.encodeMsg( { type: 'chunk', data } ) );
+			fileData.progressEl.value += data.length;
+			begin += MAX_SEND_SIZE, end += MAX_SEND_SIZE;
+			if( begin > value.length ) { value = undefined, begin = 0, end = MAX_SEND_SIZE; }
+			break;
+
+		case 'result':
+			if( msg.data.includes( 'failed ' ) ) fileData.spanEl.innerHTML = 'transfer failed';
+			fileData.spanEl.hidden = false;
+			delete sendFilesData[ fileData.fileHandle.name ];
+			writableStream = null;
+			readableStream = null;
+
+			if( Object.keys( sendFilesData ).length > 0 ){
+				fileData = Object.values( sendFilesData )[0];
+				const f = await fileData.fileHandle.getFile();
+				readableStream = f.stream().getReader();
+				fileData.progressEl.max = f.size;
+				fileData.progressEl.value = 0;
+				fileData.progressEl.hidden = false;
+				readerStartTime = undefined;
+				thisPeer.send( Brume.encodeMsg( { type: 'start', data: { name: fileData.fileHandle.name, size: f.size } } ) );
+				delete sendFilesData[ fileData.fileHandle.name ];
+			} else {
+				transferDoneButton.classList.remove( 'hidden'  );
+			}
+			break;
+
+		case 'done':
+			transferAppCleanup();
+			break;
+
+		default:
+	}
 }
 
-SimplePeer.prototype.emit = function emit( type ) {
-	var args = [];
-	for ( var i = 1; i < arguments.length; i++ ) args.push( arguments[i] );
-	var doError = ( type === 'error' );
-
-	var events = this._events;
-	if ( events !== undefined )
-		doError = ( doError && events.error === undefined );
-	else if ( !doError )
-		return false;
-
-	// If there is no 'error' event listener then throw.
-	if ( doError ) {
-		var er;
-		if ( args.length > 0 )
-			er = args[0];
-		if ( er instanceof Error ) {
-			// Note: The comments on the `throw` lines are intentional, they show
-			// up in Node's output if this results in an unhandled exception.
-			throw er; // Unhandled 'error' event
+const openFiles = async () => {
+	if ( "showOpenFilePicker" in window && window.self === window.top ) {
+		let files = [];
+		try {
+			files = await window.showOpenFilePicker( { multiple: true, startIn } );
+			startIn = files[0];
+		} catch ( err ) {
+			if ( err.name !== 'AbortError' ) console.error( err.name, err.message );
 		}
-		// At least give some kind of context to the user
-		var err = new Error( 'Unhandled error.' + ( er ? ' (' + er.message + ')' : '' ) );
-		err.context = er;
-		throw err; // Unhandled 'error' event
+		return files;
 	}
 
-	var handler = events[type];
-
-	if ( handler === undefined )
-		return false;
-
-	if ( typeof handler === 'function' ) {
-		handler.apply( this, args );
-	} else {
-		var len = handler.length;
-		var listeners = handler.slice( 0, len ); //arrayClone( handler, len );
-		for( var i = 0; i < len; ++i )
-			if( listeners[i].apply( this, args ) === 'stopImmediatePropagation' ) break;
-	}
-
-	return true;
+	// Fallback if the File System Access API is not supported.
+	return new Promise( ( resolve ) => {
+		const input = document.createElement( 'input' );
+		input.style.display = 'none';
+		input.type = 'file';
+		document.body.append( input );
+		input.addEventListener( 'change', () => {
+			input.remove();
+			resolve( input.files ? input.files : [] );
+		} );
+		if( 'showPicker' in HTMLInputElement.prototype ){
+			input.showPicker();
+		} else {
+			input.click();
+		}
+	} );
 };
 
-const	CLIENTID = '6dspdoqn9q00f0v42c12qvkh5l',
-	errorCodeMessages = {
-		400: 'Bad signalling message',
-		401: 'Unauthorized',
-		402: 'Payment required',
-		403: 'Invalid server url',
-		404: 'This user is unknown',
-		406: 'Bad token',
-		409: 'This user is already connected',
-		410: 'Payment required',
-		500: 'Server error',
-		501: 'Server error',
-		EBADCONFIG: 'Invalid token',
-		ECONNREFUSED: '',
-		ENOSRV: 'No server connection',
-		ENOTFOUND: '',
-		ENODEST: 'not connected',
-		EOFFERTIMEOUT: '',
-		NotAuthorizedException: 'Invalid refresh token'
-	};
-
-function ondataHandler ( _data ) {
-	if( checkMsgType( _data, 'signal' ) ){
-		const data = decodeMsg( _data );
-		if( data?.type === 'signal' ){
-			log.debug( `peer signal: ${ data.data.type }` );
-			switch( data.data.type ){
-				case 'offer':
-				case 'answer':
-				case 'candidate':
-				case 'renegotiate':
-					this.signal( data.data );
-					break;
-
-				case 'transceiverRequest':
-					this.addTransceiver( data.data.transceiverRequest.kind, { send: true, receive: true } );
-					break;
-
-				case 'peerError':
-					this.emit( 'peerError', data.data );
-					break;
-
-				default:
-					log.debug( `Unknown message: ${ JSON.stringify( data.data, null, 2 ) }` );
-			}
-			return 'stopImmediatePropagation';
+acceptButton.addEventListener( 'click', async () => {
+	let fileHandle = undefined;
+	let rejectedFiles = [];
+	for( const file of offeredFilesList.getElementsByTagName( 'li' ) ){
+		if( file.querySelector( 'input' ).checked ){
+			fileHandle = await window.showSaveFilePicker( { suggestedName: file.textContent, startIn } );
+			startIn = fileHandle;
+			offeredFilesData[file.textContent].fileHandle = fileHandle;
+		} else {
+			rejectedFiles.push( file.textContent );
 		}
+		file.querySelector( 'input' ).disabled = true;
 	}
+	thisPeer.send( Brume.encodeMsg( { type: 'rejectedFiles', data: rejectedFiles } ) );
+	acceptButton.disabled = true;
+	transferDoneButton.classList.remove( 'hidden'  );
+} );
+
+selectButton.addEventListener( 'click', async () => {
+	const fileHandles = await openFiles();
+	if( fileHandles?.length === 0 ) return;
+	for( const fileHandle of  fileHandles ){
+		const { liEl, cbEl, progressEl, spanEl } = fileListEntry( fileHandle.name );
+		sendFilesData[fileHandle.name] = { fileHandle, cbEl, progressEl, spanEl };
+		sendFilesList.appendChild( liEl );
+	}
+} );
+
+sendButton.addEventListener( 'click', () => {
+	const files = Object.keys( sendFilesData );
+	files.forEach( file => sendFilesData[file].cbEl.disabled = true );
+	thisPeer.send( Brume.encodeMsg( { type: 'offeredFiles', data: files  } ) );
+	sendButton.disabled = true;
+	selectButton.disabled = true;
+	return;
+} );
+
+transferAppButton.addEventListener( 'click', () => {
+	transferAppButton.classList.add( 'hidden' );
+	transferAppDiv.classList.remove( 'hidden' );
+	transferDoneButton.classList.remove( 'hidden'  );
+	sendFilesDiv.classList.remove( 'hidden'  );
+} );
+
+transferDoneButton.addEventListener( 'click', ( e ) => { transferAppCleanup( 'button' ); } );
+
+function transferApp( peer ){
+	peer.on( 'data', dataHandler );
+	thisPeer = peer;
 }
 
-class Brume extends EventEmitter {
-	static log = log;
-	static encodeMsg = encodeMsg;
-	static decodeMsg = decodeMsg;
-	#user = undefined;
-	#ws = undefined;
-	#wrtc = undefined;
-	#config = undefined;
-	#peers = {};
-	#trickle;
-	#offerProcessor = () => {};
-
-	constructor( { wrtc, WebSocket, trickle, config } = { wrtc: undefined, WebSocket: undefined, trickle: true, config: undefined } ){
-		super();
-		if( typeof window === 'undefined' ){
-			if( typeof wrtc === 'undefined' || typeof WebSocket === 'undefined' ){
-				throw( `Brume constructor requires wrtc and ws in nodejs` );
-			}
-			this.#wrtc = wrtc;
-			global.WebSocket = WebSocket;
-		}
-		this.#trickle = trickle;
-		if( config ){
-			this.#config = config;
-			this.#user = jwt.decode( this.#config?.token )['custom:brume_name'];
-		}
-	}
-
-	async #openWs( { token, url } ){
-		//this.#ws = await wsConnect( { token, url } );
-		this.#ws = await new Promise( ( res, rej ) => {
-			let ws = typeof window == undefined
-				? new WebSocket( url, { headers: { token }, rejectUnauthorized: false } )
-				: new WebSocket( `${ url }?token=${ token }` );
-
-			//ws.on('pong', ()=>{});
-			ws.onopen = () => { res( ws ); };
-
-			ws.onerror = err => {
-				// make codes recognize: ECONNREFUSED, ENOTFOUND in err.message
-				const code = err?.message
-					? err?.message.match( /: (\d*)/ )
-						? err.message.match( /: (\d*)/ )[1]
-						: undefined
-					: undefined;
-				rej( code && errorCodeMessages[code] ? { message: `${ errorCodeMessages[code] } ${ code }`, code } : err );
-			};
-
-		} );
-
-		const pingInterval = this.#ws.ping instanceof Function
-			? setInterval( () => { this.#ws.ping( ()=>{} ); }, 9.8 * 60 * 1000 )
-			: undefined;
-
-		this.#ws.addEventListener( 'message',  msg => {
-			let { from, ...data } = JSON.parse( msg.data );
-			data = data?.data ? data.data  : data ;
-
-			log.debug( `ws.onMessage: ${ data.type };` );
-			switch( data.type ){
-				case 'offer':
-					if( this.#peers[ from ] !== undefined ){
-						// offer because of peer renegotiate
-						this.#peers[ from ].signal( data );
-					} else {
-						const peer = new SimplePeer( { trickle: this.#trickle, ...( typeof this.#wrtc != 'undefined' ? { wrtc: this.#wrtc } : {} ) } );
-						peer.peerUsername = from;
-						peer.myUsername = this.thisUser;
-						peer.newPeer = true;
-						this.#peers[ from ] = peer;
-						peer.on( 'data', ondataHandler );
-						peer.on( 'close', () => {
-							delete this.#peers[ from ];
-						} );
-						peer.on( 'error', ( e ) => { if( !e.message.includes( 'Close called' ) ) log.debug( `openWs: ${ e.message }` ); } );
-						peer.on( 'signal', data => {
-							log.debug( `brume offer: ${ data.type }` );
-							this.#ws.send( JSON.stringify( { action: 'send', to: from, data } ) );
-						} );
-						this.#offerProcessor( {
-							peer,
-							accept(){
-								peer.signal( data );
-								return new Promise( res => { peer.on( 'connect', function(){
-									peer.removeAllListeners( 'signal' );
-									peer.on( 'signal', ( data ) => {
-										log.debug( `brume accept: ${ data.type }` );
-										peer.send( encodeMsg( { type: 'signal', data } ) );
-									} );
-									log.debug( `peer.onConnect: ${ from }` );
-									res();
-								} ); } );
-							}
-						} );
-					}
-					break;
-
-				case 'answer':
-					clearTimeout( this.#peers[ from ]?.offerTimer );
-				case 'candidate':
-				case 'renegotiate':
-				  if( this.#peers[ from ] ) {
-						this.#peers[ from ].signal( data );
-					} else {
-						log.debug( `${ data.type } received before peer created` );
-					}
-					break;
-
-				case 'transceiverRequest':
-					this.#peers[ from ].addTransceiver( data.transceiverRequest.kind, { send: true, receive: true } );
-					break;
-
-				case 'peerError':
-					if( this.#peers[ data.peerUsername ] instanceof SimplePeer ) this.#peers[ data.peerUsername ].emit( 'peerError', data );
-					break;
-
-				default:
-					log.debug( `Brume unknown message: ${ JSON.stringify( data, null, 2 ) }` );
-			}
-		} );
-
-		this.#ws.addEventListener( 'close', ( event ) => {
-			this.emit( 'serverclose', { code: event.code, message: event.reason } );
-			clearInterval( pingInterval );
-			this.stop();
-		} );
-	};
-
-	get thisUser() { return this.#user; }
-	get serverConnected() { return this.#ws !== undefined; }
-	set onconnection( func ){ this.#offerProcessor = func; }
-
-	async connect( to ){
-		if( this.#peers[ to ] !== undefined ){
-			return Promise.resolve( this.#peers[ to ] );
-		}
-
-		if( this.#ws === undefined ){
-			try{
-				await this.start();
-			} catch( e ){
-				return Promise.reject( e );
-			}
-		}
-
-		const peer = new SimplePeer( { initiator: true, trickle: this.#trickle, channelName: Math.floor( Math.random() * 100000 ), ...( typeof this.#wrtc != 'undefined' ? { wrtc: this.#wrtc } : {} ) } );
-		peer.peerUsername = to;
-		peer.myUsername = this.thisUser;
-		peer.newPeer = true;
-		this.#peers[ to ] = peer;
-		peer.on( 'data', ondataHandler );
-		peer.on( 'close', () => {
-			delete this.#peers?.[ to ];
-		} );
-		try{
-			return await new Promise( ( res, rej ) => {
-				peer.on( 'signal', data => {
-					log.debug( `brume connect: ${ data.type }` );
-					peer.offerTimer = setTimeout( () => {
-						peer.emit( 'peerError', { code: "EOFFERTIMEOUT", peerUsername: to } );
-						delete this.#peers[ to ];
-					}, OFFERTIMEOUT );
-					this.#ws.send( JSON.stringify( { action: 'send', to, data } ) );
-				} );
-
-				peer.on( 'connect', () => {
-					log.debug( `peer.connect: ${ to }` );
-					peer.removeAllListeners( 'signal' );
-					peer.removeAllListeners( 'peerError' );
-					peer.on( 'signal', ( data ) => {
-						log.debug( `brume connected: ${ data.type }` );
-						peer.send( encodeMsg( { type: 'signal', data } ) );
-					} );
-					res( peer );
-				} );
-				peer.on( 'error', ( e ) => { log.debug( `connect: ${ e.message }` ); rej( e ); } );
-				peer.on( 'peerError', ( { code, peerUsername: to } ) => {
-					clearTimeout( peer.offerTimer );
-					if( this.#peers[ to ] !== undefined ) this.#peers[ to ].destroy();
-					delete this.#peers[ to ];
-					rej( { message: `peerError: ${ to } ${ errorCodeMessages[ code ] }`, code: code } );
-				} );
-			} );
-		} catch( e ) {
-			throw( e );
-		}
-	};
-
-	start( config = undefined ){
-		this.#config = config === undefined ? this.#config : config;
-		try{
-			this.#user = jwt.decode( this.#config?.token )['custom:brume_name'];
-		} catch( e ){
-			return Promise.reject( { code: 'EBADCONFIG', message: errorCodeMessages[ 'EBADCONFIG' ] } );
-		}
-
-		return new Promise( async ( res, rej ) => {
-			try {
-				await this.#openWs( { token: this.#config.token, url: this.#config.url } );
-				res();
-			} catch( e ) {
-				rej( e );
-			}
-		} );
-	}
-
-	stop(){ this.#ws = undefined; }
+function transferAppCleanup( source ){
+	sendFilesList.innerHTML = '';
+	offeredFilesList.innerHTML = '';
+	sendFilesData = {};
+	offeredFilesData = {};
+	offeredFilesDiv.classList.add( 'hidden'  );
+	sendFilesDiv.classList.add( 'hidden'  ); //false;
+	transferDoneButton.classList.add( 'hidden'  );
+	transferAppDiv.classList.add( 'hidden'  );
+	transferAppButton.classList.remove( 'hidden'  );
+	sendButton.disabled = false;
+	selectButton.disabled = false;
+	acceptButton.disabled = false;
+	if( source === 'button' )thisPeer.send( Brume.encodeMsg( { type: 'done', data: null } ) );
 }
