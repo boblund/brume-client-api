@@ -29,9 +29,15 @@ class Brume { //extends EventEmitter {
 	#user = undefined;
 	#ws = undefined;
 	#config = undefined;
+	#offerHandler = () => { Brume.log.error( 'No offerHandler' ) };
+	#peers = {};
+	#peerErrorHandler = ( data ) => {
+		Brume.log.error( `peer error: ${ JSON.stringify( { code: data.code, message: data.peerUsername } ) }` );
+	};
 
-	constructor( { WebSocket, config } = { WebSocket: undefined, trickle: true, config: undefined } ){
-		//super();
+	constructor( { WebSocket, config, offerHandler, peerErrorHandler } = {} ){
+		offerHandler && ( this.#offerHandler = offerHandler );
+		peerErrorHandler && ( this.#peerErrorHandler = peerErrorHandler );
 		if( typeof window === 'undefined' ){
 			if( typeof WebSocket === 'undefined' ){
 				throw( `Brume constructor requires ws in nodejs` );
@@ -46,6 +52,10 @@ class Brume { //extends EventEmitter {
 	}
 
 	get thisUser() { return this.#user; }
+
+	getPeer( name ){ return this.#peers?.[ name ]; }
+	setPeer( name, peer = undefined ){ peer ? this.#peers[ name ] = peer : delete this.#peers[ name ]; }
+	get activePeers(){ return Object.entries( this.#peers ).length !== 0; }
 
 	start( config = undefined ){
 		this.#config = config === undefined ? this.#config : config;
@@ -67,21 +77,46 @@ class Brume { //extends EventEmitter {
 				rej( e );
 			}
 
-			//ws.on('pong', ()=>{});
+			this.#ws = ws;
 			ws.onopen = () => { res( ws ); };
 			ws.onerror = err => { rej( err ); };
+			ws.addEventListener( 'message', ( msg ) => {
+				let { from, ...data } = JSON.parse( msg.data );
+				data = data?.data ? data.data  : data ;
+				let peer = this.#peers?.[ from ];
+				Brume.log.info( `ws message: ${ data.type }` );
+				switch( data.type ){
+					case 'offer':
+						if( !this.#peers?.[ from ] ){
+							this.#offerHandler( from, data );
+							break;
+						}
+					case 'answer':
+					case 'candidate':
+					case 'renegotiate':
+						peer.signal( data );
+						break;
 
-			const pingInterval = this.#ws?.ping instanceof Function
-				? setInterval( () => { this.#ws.ping( ()=>{} ); }, 9.8 * 60 * 1000 )
-				: undefined;
+					case 'transceiverRequest':
+						peer.addTransceiver( data.transceiverRequest.kind, { send: true, receive: true } );
+						break;
+
+					case 'peerError':
+						this.#peerErrorHandler( data );
+						break;
+
+					default:
+						Brume.log.debug( `Brume unknown message: ${ JSON.stringify( data, null, 2 ) }` );
+				}
+			} );
 
 			ws.addEventListener( 'close', ( event ) => {
-				//this.emit( 'serverclose', { code: event.code, message: event.reason } );
-				clearInterval( pingInterval );
-				this.stop();
+				this.#ws = undefined;
 			} );
 		} );
 	}
 
-	stop(){ this.#ws = undefined; }
+	stop(){
+		this.#ws = undefined;
+	}
 }
