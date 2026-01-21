@@ -31,13 +31,9 @@ class Brume { //extends EventEmitter {
 	#config = undefined;
 	#offerHandler = () => { Brume.log.error( 'No offerHandler' ) };
 	#peers = {};
-	#peerErrorHandler = ( data ) => {
-		Brume.log.error( `peer error: ${ JSON.stringify( { code: data.code, message: data.peerUsername } ) }` );
-	};
 
-	constructor( { WebSocket, config, offerHandler, peerErrorHandler } = {} ){
+	constructor( { WebSocket, config, offerHandler } ){
 		offerHandler && ( this.#offerHandler = offerHandler );
-		peerErrorHandler && ( this.#peerErrorHandler = peerErrorHandler );
 		if( typeof window === 'undefined' ){
 			if( typeof WebSocket === 'undefined' ){
 				throw( `Brume constructor requires ws in nodejs` );
@@ -102,7 +98,7 @@ class Brume { //extends EventEmitter {
 						break;
 
 					case 'peerError':
-						this.#peerErrorHandler( data );
+						this.#peers[ data.peerUsername ].emit( 'peerError', data );
 						break;
 
 					default:
