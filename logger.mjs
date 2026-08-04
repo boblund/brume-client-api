@@ -11,8 +11,8 @@ const _log = a => ( ...b ) => {
 	if( levels.indexOf( a ) > -1 && levels.indexOf( a ) >= levels.indexOf( level ) ) {
 		const lineNumber = level === 'DEBUG' ? basename( new Error().stack.split( '\n' )[3].slice( 0, -1 ) )
 			.replace( /:\d+$/, '' ) : '';
-		console.log( `${ new Date().toLocaleString( 'sv-SE' ) } [ ${ a } ]`, lineNumber, b.join( ' ' ) );
-	}
+		const msg = `${ new Date().toLocaleString( 'sv-SE' ) } [ ${ a } ] ${ lineNumber } ${ b.join( ' ' ) }`;
+		console.log( msg );	}
 };
 
 const log = {
